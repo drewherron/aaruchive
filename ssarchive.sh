@@ -66,12 +66,20 @@ fi
 # Get hostname
 HOSTNAME=$HOST
 
+# Convert output directory to absolute path
+OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
+
 # Create backup directory
 BACKUP_DIR="$OUTPUT_DIR/$HOSTNAME"
 mkdir -p "$BACKUP_DIR" || { echo "Error: Cannot create backup directory '$BACKUP_DIR'."; exit 1; }
 
 echo "Creating backup in: $BACKUP_DIR"
 echo "Reading directories from: $INPUT_FILE"
+
+# Create a temporary exclusion file to prevent backing up the backup directory
+AUTO_EXCLUDE_FILE=$(mktemp)
+echo "$BACKUP_DIR" > "$AUTO_EXCLUDE_FILE"
+echo "$OUTPUT_DIR" >> "$AUTO_EXCLUDE_FILE"
 
 # Load exclusion list if provided
 EXCLUSIONS=()
@@ -91,27 +99,40 @@ fi
 while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     # Skip empty lines and comments
     [[ -z "$DIR" || "$DIR" == \#* ]] && continue
-
+    
     # Strip trailing slash if exists
     DIR=${DIR%/}
-
+    
     echo "Processing directory: $DIR"
-
+    
     # Check if the directory exists
     if [ ! -d "$DIR" ]; then
         echo "Warning: Directory '$DIR' does not exist. Skipping."
         continue
     fi
-
+    
     # Get the basename of the directory
     DIR_NAME=$(basename "$DIR")
-
+    
     # Create the destination directory
     mkdir -p "$BACKUP_DIR/$DIR_NAME"
-
+    
+    # Convert current directory to absolute path
+    DIR=$(cd "$DIR" && pwd)
+    
+    # Check if this directory contains or is the backup directory
+    if [[ "$BACKUP_DIR" == "$DIR"/* || "$DIR" == "$BACKUP_DIR"/* || "$DIR" == "$BACKUP_DIR" || "$DIR" == "$OUTPUT_DIR" ]]; then
+        echo "WARNING: Directory '$DIR' contains or is the backup destination."
+        echo "This would cause infinite recursion. Skipping this directory."
+        continue
+    fi
+    
     # Create a temporary exclude file specific to this directory
     TEMP_EXCLUDE_FILE=$(mktemp)
-
+    
+    # First copy the auto-exclusions to prevent recursion
+    cat "$AUTO_EXCLUDE_FILE" > "$TEMP_EXCLUDE_FILE"
+    
     # Process exclusions for this directory
     if [ ${#EXCLUSIONS[@]} -gt 0 ]; then
         echo "Finding applicable exclusions for $DIR/"
@@ -125,10 +146,10 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
             fi
         done
     fi
-
+    
     # Run rsync with exclusion file if there are applicable exclusions
     echo "Backing up $DIR/ to $BACKUP_DIR/$DIR_NAME/"
-
+    
     if [ -s "$TEMP_EXCLUDE_FILE" ]; then
         echo "Using exclusion file with $(wc -l < "$TEMP_EXCLUDE_FILE") patterns"
         rsync -av --exclude-from="$TEMP_EXCLUDE_FILE" "$DIR/" "$BACKUP_DIR/$DIR_NAME/"
@@ -136,21 +157,24 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
         echo "No applicable exclusions for this directory"
         rsync -av "$DIR/" "$BACKUP_DIR/$DIR_NAME/"
     fi
-
+    
     # Check if rsync was successful
     if [ $? -eq 0 ]; then
         echo "Successfully backed up: $DIR/"
     else
         echo "Error backing up: $DIR/"
     fi
-
+    
     # Remove the temporary file
     rm -f "$TEMP_EXCLUDE_FILE"
-
+    
     echo "----------------------------------------"
-
+    
 done < "$INPUT_FILE"
 
 echo "Backup completed to: $BACKUP_DIR"
 echo "Directories backed up:"
 ls -la "$BACKUP_DIR"
+
+# Clean up
+rm -f "$AUTO_EXCLUDE_FILE"
