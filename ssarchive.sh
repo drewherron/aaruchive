@@ -67,7 +67,7 @@ fi
 HOSTNAME=$HOST
 
 # Convert output directory to absolute path
-OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
+OUTPUT_DIR=$(cd "$OUTPUT_DIR" 2>/dev/null && pwd || echo "$OUTPUT_DIR")
 
 # Create backup directory
 BACKUP_DIR="$OUTPUT_DIR/$HOSTNAME"
@@ -75,11 +75,6 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Cannot create backup directory '$BACKUP
 
 echo "Creating backup in: $BACKUP_DIR"
 echo "Reading directories from: $INPUT_FILE"
-
-# Create a temporary exclusion file to prevent backing up the backup directory
-AUTO_EXCLUDE_FILE=$(mktemp)
-echo "$BACKUP_DIR" > "$AUTO_EXCLUDE_FILE"
-echo "$OUTPUT_DIR" >> "$AUTO_EXCLUDE_FILE"
 
 # Load exclusion list if provided
 EXCLUSIONS=()
@@ -118,20 +113,17 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     mkdir -p "$BACKUP_DIR/$DIR_NAME"
     
     # Convert current directory to absolute path
-    DIR=$(cd "$DIR" && pwd)
+    DIR=$(cd "$DIR" 2>/dev/null && pwd || echo "$DIR")
     
-    # Check if this directory contains or is the backup directory
-    if [[ "$BACKUP_DIR" == "$DIR"/* || "$DIR" == "$BACKUP_DIR"/* || "$DIR" == "$BACKUP_DIR" || "$DIR" == "$OUTPUT_DIR" ]]; then
-        echo "WARNING: Directory '$DIR' contains or is the backup destination."
+    # Check if this directory IS the backup directory (direct match)
+    if [[ "$DIR" == "$BACKUP_DIR" || "$DIR" == "$OUTPUT_DIR" ]]; then
+        echo "WARNING: Directory '$DIR' is the backup destination."
         echo "This would cause infinite recursion. Skipping this directory."
         continue
     fi
     
     # Create a temporary exclude file specific to this directory
     TEMP_EXCLUDE_FILE=$(mktemp)
-    
-    # First copy the auto-exclusions to prevent recursion
-    cat "$AUTO_EXCLUDE_FILE" > "$TEMP_EXCLUDE_FILE"
     
     # Process exclusions for this directory
     if [ ${#EXCLUSIONS[@]} -gt 0 ]; then
@@ -145,6 +137,15 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
                 echo "$REL_EXCL" >> "$TEMP_EXCLUDE_FILE"
             fi
         done
+    fi
+    
+    # If the backup directory is inside this directory, add it to exclusions
+    if [[ "$BACKUP_DIR" == "$DIR"/* ]]; then
+        # Get the relative path from the source to the backup dir
+        REL_BACKUP="${BACKUP_DIR#$DIR/}"
+        echo "WARNING: The backup destination is inside this source directory."
+        echo "  Auto-excluding: $REL_BACKUP"
+        echo "$REL_BACKUP" >> "$TEMP_EXCLUDE_FILE"
     fi
     
     # Run rsync with exclusion file if there are applicable exclusions
@@ -175,6 +176,3 @@ done < "$INPUT_FILE"
 echo "Backup completed to: $BACKUP_DIR"
 echo "Directories backed up:"
 ls -la "$BACKUP_DIR"
-
-# Clean up
-rm -f "$AUTO_EXCLUDE_FILE"
