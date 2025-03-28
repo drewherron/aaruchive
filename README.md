@@ -25,6 +25,8 @@ chmod +x ssarchive.sh
 ./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude exclude.txt
 ```
 
+For both input and exclusion directories, you'll want to use the full path. I tried to switch to patterns for the exclusion list, and while it's simple with rsync alone, I just couldn't get it to work here.
+
 ### Command Line Options
 
 ```
@@ -85,3 +87,5 @@ ssarchive processes backups in several steps:
 5. **Backup Structure**: Each source directory gets its own subdirectory in the backup location, maintaining its original name (e.g., `/backups/hostname/Documents/`).
 
 This approach makes it easy to back up multiple directories to a single location while excluding specific subdirectories, and is particularly useful for recurring backups to external drives or network storage.
+
+Pull requests are welcome, especially if you can figure out how to use patterns instead of paths in the exclusion list.
