@@ -6,13 +6,29 @@ usage() {
     echo ""
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -i, --input FILE    Text file with list of directories to back up (one per line)"
-    echo "  -o, --output DIR    Directory where backups will be stored"
-    echo "  -e, --exclude FILE  Optional: Text file with paths to exclude (one per line)"
-    echo "  -h, --help          Display this help message"
+    echo "  -i, --input FILE      Text file with list of directories to back up (one per line)"
+    echo "  -o, --output DIR      Directory where backups will be stored"
+    echo "  -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)"
+    echo "  -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude"
+    echo "  -h, --help            Display this help message"
+    echo ""
+    echo "Exclusion Patterns:"
+    echo "  Pattern file supports rsync patterns:"
+    echo "    - Simple names: 'venv' excludes all dirs/files named 'venv'"
+    echo "    - Wildcards: '*.log' excludes all log files"
+    echo "    - Directories: 'node_modules/' excludes all node_modules directories"
+    echo "    - Paths: '/specific/path' excludes from root of each source"
     echo ""
     echo "Example:"
-    echo "  $0 --input dirs.txt --output /mnt/backup --exclude exclude.txt"
+    echo "  $0 --input dirs.txt --output /mnt/backup --exclude patterns.txt"
+    echo ""
+    echo "Example patterns.txt:"
+    echo "  venv"
+    echo "  __pycache__"
+    echo "  *.pyc"
+    echo "  .git/"
+    echo "  node_modules/"
+    echo "  *.log"
     exit 1
 }
 
@@ -20,6 +36,7 @@ usage() {
 INPUT_FILE=""
 OUTPUT_DIR=""
 EXCLUDE_FILE=""
+PATH_EXCLUDE_FILE=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -34,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -e|--exclude)
             EXCLUDE_FILE="$2"
+            shift 2
+            ;;
+        -p|--path-exclude)
+            PATH_EXCLUDE_FILE="$2"
             shift 2
             ;;
         -h|--help)
@@ -79,110 +100,126 @@ mkdir -p "$BACKUP_DIR" || { echo "Error: Cannot create backup directory '$BACKUP
 echo "Creating backup in: $BACKUP_DIR"
 echo "Reading directories from: $INPUT_FILE"
 
-# Load exclusion list if provided
-EXCLUSIONS=()
+# Build rsync options
+RSYNC_OPTS="-av"
+
+# Add pattern exclusions if provided
 if [ -n "$EXCLUDE_FILE" ] && [ -f "$EXCLUDE_FILE" ]; then
-    echo "Using exclusion list from: $EXCLUDE_FILE"
+    echo "Using exclusion patterns from: $EXCLUDE_FILE"
+    # Count non-empty, non-comment lines
+    PATTERN_COUNT=$(grep -v '^#' "$EXCLUDE_FILE" | grep -v '^[[:space:]]*$' | wc -l)
+    echo "Loaded $PATTERN_COUNT exclusion patterns"
+    RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$EXCLUDE_FILE"
+fi
+
+# Load path-based exclusions if provided
+PATH_EXCLUSIONS=()
+if [ -n "$PATH_EXCLUDE_FILE" ] && [ -f "$PATH_EXCLUDE_FILE" ]; then
+    echo "Using path exclusions from: $PATH_EXCLUDE_FILE"
     while IFS= read -r EXCL || [[ -n "$EXCL" ]]; do
         # Skip empty lines and comments
         [[ -z "$EXCL" || "$EXCL" == \#* ]] && continue
         # Remove trailing slash if exists
         EXCL=${EXCL%/}
-        EXCLUSIONS+=("$EXCL")
-    done < "$EXCLUDE_FILE"
-    echo "Loaded ${#EXCLUSIONS[@]} exclusion patterns"
+        PATH_EXCLUSIONS+=("$EXCL")
+    done < "$PATH_EXCLUDE_FILE"
+    echo "Loaded ${#PATH_EXCLUSIONS[@]} path exclusion entries"
 fi
 
 # Process each directory in the list
 while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     # Skip empty lines and comments
     [[ -z "$DIR" || "$DIR" == \#* ]] && continue
-    
+
     # Strip trailing slash if exists
     DIR=${DIR%/}
-    
+
     # Convert to absolute path if possible
     if [ -d "$DIR" ]; then
         DIR=$(cd "$DIR" 2>/dev/null && pwd || echo "$DIR")
     fi
-    
+
     echo "Processing directory: $DIR"
-    
+
     # Check if the directory exists
     if [ ! -d "$DIR" ]; then
         echo "WARNING: Directory '$DIR' does not exist. Skipping."
         continue
     fi
-    
+
     # Check if this directory IS the backup directory (direct match)
     if [[ "$DIR" == "$BACKUP_DIR" || "$DIR" == "$OUTPUT_DIR" ]]; then
         echo "WARNING: Directory '$DIR' is the backup destination."
         echo "This would cause infinite recursion. Skipping this directory."
         continue
     fi
-    
+
     # Create path structure for backup - preserve full paths
     # Remove leading slash to avoid absolute paths
     REL_PATH="${DIR#/}"
     DEST_DIR="$BACKUP_DIR/$REL_PATH"
-    
+
     echo "Destination: $DEST_DIR"
-    
+
     # Create the destination directory
-    mkdir -p "$DEST_DIR" || { 
+    mkdir -p "$DEST_DIR" || {
         echo "Error: Cannot create destination directory '$DEST_DIR'."
         continue
     }
-    
-    # Create a temporary exclude file specific to this directory
-    TEMP_EXCLUDE_FILE=$(mktemp)
-    
-    # Process exclusions for this directory
-    if [ ${#EXCLUSIONS[@]} -gt 0 ]; then
-        echo "Finding applicable exclusions for $DIR/"
-        for EXCL in "${EXCLUSIONS[@]}"; do
+
+    # Build directory-specific rsync options
+    DIR_RSYNC_OPTS="$RSYNC_OPTS"
+
+    # Create a temporary exclude file for path-specific exclusions
+    TEMP_EXCLUDE_FILE=""
+    if [ ${#PATH_EXCLUSIONS[@]} -gt 0 ]; then
+        TEMP_EXCLUDE_FILE=$(mktemp)
+        for EXCL in "${PATH_EXCLUSIONS[@]}"; do
             # Check if this exclusion applies to the current directory
             if [[ "$EXCL" == "$DIR"/* ]]; then
                 # Convert to a path relative to the source directory
                 REL_EXCL="${EXCL#$DIR/}"
-                echo "  Excluding: $REL_EXCL"
+                echo "  Path exclusion: $REL_EXCL"
                 echo "$REL_EXCL" >> "$TEMP_EXCLUDE_FILE"
             fi
         done
+
+        if [ -s "$TEMP_EXCLUDE_FILE" ]; then
+            DIR_RSYNC_OPTS="$DIR_RSYNC_OPTS --exclude-from=$TEMP_EXCLUDE_FILE"
+        fi
     fi
-    
-    # If the backup directory is inside this directory, add it to exclusions
+
+    # If the backup directory is inside this directory, exclude it
     if [[ "$BACKUP_DIR" == "$DIR"/* ]]; then
         # Get the relative path from the source to the backup dir
         REL_BACKUP="${BACKUP_DIR#$DIR/}"
         echo "WARNING: The backup destination is inside this source directory."
         echo "  Auto-excluding: $REL_BACKUP"
-        echo "$REL_BACKUP" >> "$TEMP_EXCLUDE_FILE"
+        DIR_RSYNC_OPTS="$DIR_RSYNC_OPTS --exclude=$REL_BACKUP"
     fi
-    
-    # Run rsync with exclusion file if there are applicable exclusions
+
+    # Run rsync
     echo "Backing up $DIR/ to $DEST_DIR/"
-    
-    if [ -s "$TEMP_EXCLUDE_FILE" ]; then
-        echo "Using exclusion file with $(wc -l < "$TEMP_EXCLUDE_FILE") patterns"
-        rsync -av --exclude-from="$TEMP_EXCLUDE_FILE" "$DIR/" "$DEST_DIR/"
-    else
-        echo "No applicable exclusions for this directory"
-        rsync -av "$DIR/" "$DEST_DIR/"
+    if [ -n "$EXCLUDE_FILE" ] && [ -f "$EXCLUDE_FILE" ]; then
+        echo "Applying global exclusion patterns"
     fi
-    
+
+    eval rsync $DIR_RSYNC_OPTS "$DIR/" "$DEST_DIR/"
+
     # Check if rsync was successful
     if [ $? -eq 0 ]; then
         echo "Successfully backed up: $DIR/"
     else
         echo "Error backing up: $DIR/"
     fi
-    
-    # Remove the temporary file
-    rm -f "$TEMP_EXCLUDE_FILE"
-    
+
+    # Remove the temporary file if created
+    if [ -n "$TEMP_EXCLUDE_FILE" ]; then
+        rm -f "$TEMP_EXCLUDE_FILE"
+    fi
+
     echo "----------------------------------------"
-    
+
 done < "$INPUT_FILE"
 
 echo "Backup completed to: $BACKUP_DIR"
