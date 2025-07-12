@@ -100,21 +100,19 @@ Add to crontab to run daily:
 
 ssarchive processes backups in several steps:
 
-1. **Directory Organization**: Creates a main backup directory with the local hostname (e.g., `/backups/hostname/`) to keep backups organized by machine.
+1. **Directory Reading**: Reads the source directories list, processing each directory separately while preserving its original name in the backup location.
 
-2. **Directory Reading**: Reads the source directories list, processing each directory separately while preserving its original name in the backup location.
-
-3. **Exclusion Processing**: 
+2. **Exclusion Processing**: 
    - **Pattern exclusions**: Passed directly to rsync via `--exclude-from` for efficient pattern matching across all files
    - **Path exclusions**: Processed per-directory to convert absolute paths to relative paths that rsync can understand
    - Creates temporary exclusion files for path-based exclusions when needed
 
-4. **Rsync Configuration**: Uses rsync with these options:
+3. **Rsync Configuration**: Uses rsync with these options:
    - `-a` (archive): Preserves permissions, ownership, timestamps, and other attributes
    - `-v` (verbose): Shows detailed progress information
    - No `--delete` option: Files in the destination that no longer exist in the source are preserved
    
-5. **Backup Structure**: Each source directory gets its own subdirectory in the backup location, maintaining its original name (e.g., `/backups/hostname/Documents/`).
+4. **Backup Structure**: Each source directory gets its own subdirectory in the backup location, maintaining its original name (e.g., `/backups/Documents/`).
 
 This approach makes it easy to back up multiple directories to a single location while excluding files by pattern or specific paths, and is particularly useful for recurring backups to external drives or network storage.
 
