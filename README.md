@@ -19,22 +19,33 @@ chmod +x ssarchive.sh
 ./ssarchive.sh --input dir_list.txt --output /path/to/backups
 ```
 
-### With Exclusions
+### With Pattern Exclusions
 
 ```bash
-./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude exclude.txt
+./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt
 ```
 
-For both input and exclusion directories, you'll want to use the full path. I tried to switch to patterns for the exclusion list, and while it's simple with rsync alone, I just couldn't get it to work here.
+### With Path Exclusions
+
+```bash
+./ssarchive.sh --input dir_list.txt --output /path/to/backups --path-exclude paths.txt
+```
+
+### With Both Types of Exclusions
+
+```bash
+./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt --path-exclude paths.txt
+```
 
 ### Command Line Options
 
 ```
 Options:
-  -i, --input FILE    Text file with list of directories to back up (one per line)
-  -o, --output DIR    Directory where backups will be stored
-  -e, --exclude FILE  Optional: Text file with paths to exclude (one per line)
-  -h, --help          Display help message
+  -i, --input FILE      Text file with list of directories to back up (one per line)
+  -o, --output DIR      Directory where backups will be stored
+  -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)
+  -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude
+  -h, --help            Display help message
 ```
 
 ### Directory List Format
@@ -47,9 +58,28 @@ Create a text file with one directory path per line:
 /var/www
 ```
 
-### Exclusion List Format
+### Pattern Exclusion Format
 
-Create a text file with full paths to exclude:
+Create a text file with rsync exclusion patterns (one per line):
+
+```
+venv
+__pycache__
+*.pyc
+.git/
+node_modules/
+*.log
+```
+
+Patterns support:
+- Simple names: `venv` excludes all dirs/files named 'venv'
+- Wildcards: `*.log` excludes all log files
+- Directories: `node_modules/` excludes all node_modules directories
+- Paths: `/specific/path` excludes from root of each source
+
+### Path Exclusion Format
+
+Create a text file with full absolute paths to exclude:
 
 ```
 /home/user/Documents/temp
@@ -62,7 +92,7 @@ Create a text file with full paths to exclude:
 Add to crontab to run daily:
 
 ```
-0 2 * * * /path/to/ssarchive.sh -i /path/to/dir_list.txt -o /path/to/backups -e /path/to/exclude.txt
+0 2 * * * /path/to/ssarchive.sh -i /path/to/dir_list.txt -o /path/to/backups -e /path/to/patterns.txt
 ```
 
 ## How It Works
@@ -74,10 +104,9 @@ ssarchive processes backups in several steps:
 2. **Directory Reading**: Reads the source directories list, processing each directory separately while preserving its original name in the backup location.
 
 3. **Exclusion Processing**: 
-   - Reads the exclusion file (if provided)
-   - For each source directory, filters the exclusions to find only those relevant to that directory
-   - Converts full exclusion paths to relative paths that rsync can understand
-   - Creates temporary exclusion files tailored to each source directory
+   - **Pattern exclusions**: Passed directly to rsync via `--exclude-from` for efficient pattern matching across all files
+   - **Path exclusions**: Processed per-directory to convert absolute paths to relative paths that rsync can understand
+   - Creates temporary exclusion files for path-based exclusions when needed
 
 4. **Rsync Configuration**: Uses rsync with these options:
    - `-a` (archive): Preserves permissions, ownership, timestamps, and other attributes
@@ -86,6 +115,6 @@ ssarchive processes backups in several steps:
    
 5. **Backup Structure**: Each source directory gets its own subdirectory in the backup location, maintaining its original name (e.g., `/backups/hostname/Documents/`).
 
-This approach makes it easy to back up multiple directories to a single location while excluding specific subdirectories, and is particularly useful for recurring backups to external drives or network storage.
+This approach makes it easy to back up multiple directories to a single location while excluding files by pattern or specific paths, and is particularly useful for recurring backups to external drives or network storage.
 
-Pull requests are welcome, especially if you can figure out how to use patterns instead of paths in the exclusion list.
+Pull requests are welcome!
