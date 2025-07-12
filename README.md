@@ -76,6 +76,7 @@ Patterns support:
 - Wildcards: `*.log` excludes all log files
 - Directories: `node_modules/` excludes all node_modules directories
 - Paths: `/specific/path` excludes from root of each source
+- Comments: lines beginning with `#` are ignored
 
 ### Path Exclusion Format
 
