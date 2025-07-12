@@ -84,18 +84,11 @@ if [ ! -d "$OUTPUT_DIR" ]; then
     mkdir -p "$OUTPUT_DIR" || { echo "Error: Cannot create output directory '$OUTPUT_DIR'."; exit 1; }
 fi
 
-# Get hostname
-HOSTNAME=$(hostname)
-if [ -z "$HOSTNAME" ]; then
-    HOSTNAME="unknown-host"
-fi
-
 # Convert output directory to absolute path if possible
 OUTPUT_DIR=$(cd "$OUTPUT_DIR" 2>/dev/null && pwd || echo "$OUTPUT_DIR")
 
-# Create backup directory
-BACKUP_DIR="$OUTPUT_DIR/$HOSTNAME"
-mkdir -p "$BACKUP_DIR" || { echo "Error: Cannot create backup directory '$BACKUP_DIR'."; exit 1; }
+# Use output directory directly as backup directory
+BACKUP_DIR="$OUTPUT_DIR"
 
 echo "Creating backup in: $BACKUP_DIR"
 echo "Reading directories from: $INPUT_FILE"
