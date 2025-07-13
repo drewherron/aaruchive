@@ -1,14 +1,12 @@
-# ssarchive
+# aaruchive
 
 A simple directory backup tool using rsync. It's basically just a wrapper for rsync that takes in lists of directories to include and exclude. I made this to simplify occasional backups to an external drive, or to consolidate backups into a single cron job.
-
-`ss` stands for "stupid simple" because it's almost stupid for this to have its own repo. Almost.
 
 ## Installation
 
 ```bash
-git clone https://github.com/drewherron/ssarchive.git
-chmod +x ssarchive.sh
+git clone https://github.com/drewherron/aaruchive.git
+chmod +x aaruchive.sh
 ```
 
 ## Usage
@@ -16,25 +14,25 @@ chmod +x ssarchive.sh
 ### Basic Usage
 
 ```bash
-./ssarchive.sh --input dir_list.txt --output /path/to/backups
+./aaruchive.sh --input dir_list.txt --output /path/to/backups
 ```
 
 ### With Pattern Exclusions
 
 ```bash
-./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt
+./aaruchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt
 ```
 
 ### With Path Exclusions
 
 ```bash
-./ssarchive.sh --input dir_list.txt --output /path/to/backups --path-exclude paths.txt
+./aaruchive.sh --input dir_list.txt --output /path/to/backups --path-exclude paths.txt
 ```
 
 ### With Both Types of Exclusions
 
 ```bash
-./ssarchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt --path-exclude paths.txt
+./aaruchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt --path-exclude paths.txt
 ```
 
 ### Command Line Options
@@ -93,12 +91,12 @@ Create a text file with full absolute paths to exclude:
 Add to crontab to run daily:
 
 ```
-0 2 * * * /path/to/ssarchive.sh -i /path/to/dir_list.txt -o /path/to/backups -e /path/to/patterns.txt
+0 2 * * * /path/to/aaruchive.sh -i /path/to/dir_list.txt -o /path/to/backups -e /path/to/patterns.txt
 ```
 
 ## How It Works
 
-ssarchive processes backups in several steps:
+aaruchive processes backups in several steps:
 
 1. **Directory Reading**: Reads the source directories list, processing each directory separately while preserving its original name in the backup location.
 
