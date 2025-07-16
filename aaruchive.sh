@@ -10,6 +10,7 @@ usage() {
     echo "  -o, --output DIR      Directory where backups will be stored"
     echo "  -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)"
     echo "  -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude"
+    echo "  -s, --strip-prefix DIR   Optional: Remove this prefix from source paths in output"
     echo "  -h, --help            Display this help message"
     echo ""
     echo "Exclusion Patterns:"
@@ -19,8 +20,9 @@ usage() {
     echo "    - Directories: 'node_modules/' excludes all node_modules directories"
     echo "    - Paths: '/specific/path' excludes from root of each source"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  $0 --input dirs.txt --output /mnt/backup --exclude patterns.txt"
+    echo "  $0 --input dirs.txt --output /mnt/backup --strip-prefix /media/user/drive"
     echo ""
     echo "Example patterns.txt:"
     echo "  venv"
@@ -37,6 +39,7 @@ INPUT_FILE=""
 OUTPUT_DIR=""
 EXCLUDE_FILE=""
 PATH_EXCLUDE_FILE=""
+STRIP_PREFIX=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -55,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--path-exclude)
             PATH_EXCLUDE_FILE="$2"
+            shift 2
+            ;;
+        -s|--strip-prefix)
+            STRIP_PREFIX="$2"
             shift 2
             ;;
         -h|--help)
@@ -148,8 +155,22 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     fi
 
     # Create path structure for backup - preserve full paths
-    # Remove leading slash to avoid absolute paths
-    REL_PATH="${DIR#/}"
+    # Apply prefix stripping if specified
+    if [ -n "$STRIP_PREFIX" ] && [[ "$DIR" == "$STRIP_PREFIX"* ]]; then
+        # Remove the strip prefix from the beginning of the path
+        STRIPPED_DIR="${DIR#$STRIP_PREFIX}"
+        # Remove leading slash if present after stripping
+        STRIPPED_DIR="${STRIPPED_DIR#/}"
+        # If nothing left after stripping, use the basename
+        if [ -z "$STRIPPED_DIR" ]; then
+            STRIPPED_DIR="$(basename "$DIR")"
+        fi
+        REL_PATH="$STRIPPED_DIR"
+        echo "Stripped prefix '$STRIP_PREFIX' from path"
+    else
+        # Remove leading slash to avoid absolute paths
+        REL_PATH="${DIR#/}"
+    fi
     DEST_DIR="$BACKUP_DIR/$REL_PATH"
 
     echo "Destination: $DEST_DIR"

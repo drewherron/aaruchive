@@ -35,6 +35,12 @@ chmod +x aaruchive.sh
 ./aaruchive.sh --input dir_list.txt --output /path/to/backups --exclude patterns.txt --path-exclude paths.txt
 ```
 
+### With Prefix Stripping
+
+```bash
+./aaruchive.sh --input dir_list.txt --output /path/to/backups --strip-prefix /media/user/drive
+```
+
 ### Command Line Options
 
 ```
@@ -43,6 +49,7 @@ Options:
   -o, --output DIR      Directory where backups will be stored
   -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)
   -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude
+  -s, --strip-prefix DIR   Optional: Remove this prefix from source paths in output
   -h, --help            Display help message
 ```
 
@@ -85,6 +92,20 @@ Create a text file with full absolute paths to exclude:
 /home/user/Pictures/large-files
 /var/www/cache
 ```
+
+### Prefix Stripping
+
+The `--strip-prefix` option is especially useful when all source directories are deep in the same directory structure. Instead of preserving the full source path in the backup, it removes a common prefix:
+
+**Without prefix stripping:**
+- Source: `/media/user/drive/Pictures`
+- Backup: `/backups/media/user/drive/Pictures`
+
+**With `--strip-prefix /media/user/drive`:**
+- Source: `/media/user/drive/Pictures`
+- Backup: `/backups/Pictures`
+
+This can be helpful when migrating to/from external drives, or reorganizing directory structures.
 
 ### As a Cron Job
 
