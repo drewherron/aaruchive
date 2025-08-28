@@ -288,8 +288,11 @@ if [ ${#DIR_PATHS[@]} -gt 0 ]; then
     echo ""
     echo "Summary:"
     for ((i=0; i<${#DIR_PATHS[@]}; i++)); do
-        echo "${DIR_PATHS[$i]}"
-        printf "  Added: %8s       Updated: %8s       Deleted: %8s\n" "${ADDED_COUNTS[$i]}" "${UPDATED_COUNTS[$i]}" "${DELETED_COUNTS[$i]}"
+        # Skip empty entries
+        if [ -n "${DIR_PATHS[$i]}" ]; then
+            echo "${DIR_PATHS[$i]}"
+            printf "  Added: %8s       Updated: %8s       Deleted: %8s\n" "${ADDED_COUNTS[$i]}" "${UPDATED_COUNTS[$i]}" "${DELETED_COUNTS[$i]}"
+        fi
     done
 fi
 
