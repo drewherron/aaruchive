@@ -11,6 +11,7 @@ usage() {
     echo "  -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)"
     echo "  -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude"
     echo "  -s, --strip-prefix DIR   Optional: Remove this prefix from source paths in output"
+    echo "  -d, --delete             Optional: Delete files from destination that don't exist in source"
     echo "  -h, --help            Display this help message"
     echo ""
     echo "Exclusion Patterns:"
@@ -40,6 +41,7 @@ OUTPUT_DIR=""
 EXCLUDE_FILE=""
 PATH_EXCLUDE_FILE=""
 STRIP_PREFIX=""
+USE_DELETE=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -63,6 +65,10 @@ while [[ $# -gt 0 ]]; do
         -s|--strip-prefix)
             STRIP_PREFIX="$2"
             shift 2
+            ;;
+        -d|--delete)
+            USE_DELETE=true
+            shift
             ;;
         -h|--help)
             usage
@@ -102,6 +108,12 @@ echo "Reading directories from: $INPUT_FILE"
 
 # Build rsync options
 RSYNC_OPTS="-av"
+
+# Add delete option if specified
+if [ "$USE_DELETE" = true ]; then
+    RSYNC_OPTS="$RSYNC_OPTS --delete"
+    echo "Using --delete: files not in source will be removed from backup"
+fi
 
 # Add pattern exclusions if provided
 if [ -n "$EXCLUDE_FILE" ] && [ -f "$EXCLUDE_FILE" ]; then
