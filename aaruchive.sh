@@ -107,7 +107,7 @@ echo "Creating backup in: $BACKUP_DIR"
 echo "Reading directories from: $INPUT_FILE"
 
 # Build rsync options
-RSYNC_OPTS="-av"
+RSYNC_OPTS="-avi"
 
 # Add delete option if specified
 if [ "$USE_DELETE" = true ]; then
@@ -123,6 +123,12 @@ if [ -n "$EXCLUDE_FILE" ] && [ -f "$EXCLUDE_FILE" ]; then
     echo "Loaded $PATTERN_COUNT exclusion patterns"
     RSYNC_OPTS="$RSYNC_OPTS --exclude-from=$EXCLUDE_FILE"
 fi
+
+# Arrays to store statistics for each directory
+DIR_PATHS=()
+ADDED_COUNTS=()
+UPDATED_COUNTS=()
+DELETED_COUNTS=()
 
 # Load path-based exclusions if provided
 PATH_EXCLUSIONS=()
@@ -230,14 +236,41 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
         echo "Applying global exclusion patterns"
     fi
 
-    eval rsync $DIR_RSYNC_OPTS "$DIR/" "$DEST_DIR/"
+    # Create temporary file to capture rsync output
+    RSYNC_OUTPUT=$(mktemp)
+    
+    eval rsync $DIR_RSYNC_OPTS "$DIR/" "$DEST_DIR/" | tee "$RSYNC_OUTPUT"
 
     # Check if rsync was successful
     if [ $? -eq 0 ]; then
         echo "Successfully backed up: $DIR/"
+        
+        # Parse rsync output to count operations
+        ADDED=0
+        UPDATED=0
+        DELETED=0
+        
+        while IFS= read -r line; do
+            if [[ "$line" == "*deleting "* ]]; then
+                ((DELETED++))
+            elif [[ "$line" =~ ^\>f\+\+\+\+\+\+\+\+\+ ]]; then
+                ((ADDED++))
+            elif [[ "$line" =~ ^\>f\.[st].* ]] || [[ "$line" =~ ^\>f[^+]+ ]]; then
+                ((UPDATED++))
+            fi
+        done < "$RSYNC_OUTPUT"
+        
+        # Store statistics for this directory
+        DIR_PATHS+=("$DIR")
+        ADDED_COUNTS+=("$ADDED")
+        UPDATED_COUNTS+=("$UPDATED")
+        DELETED_COUNTS+=("$DELETED")
     else
         echo "Error backing up: $DIR/"
     fi
+    
+    # Clean up temporary rsync output file
+    rm -f "$RSYNC_OUTPUT"
 
     # Remove the temporary file if created
     if [ -n "$TEMP_EXCLUDE_FILE" ]; then
@@ -249,5 +282,19 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
 done < "$INPUT_FILE"
 
 echo "Backup completed to: $BACKUP_DIR"
+
+# Display summary statistics
+if [ ${#DIR_PATHS[@]} -gt 0 ]; then
+    echo ""
+    echo "Summary:"
+    for ((i=0; i<${#DIR_PATHS[@]}; i++)); do
+        echo "${DIR_PATHS[$i]}"
+        printf "  Added:\t%s\n" "${ADDED_COUNTS[$i]}"
+        printf "  Updated:\t%s\n" "${UPDATED_COUNTS[$i]}"
+        printf "  Deleted:\t%s\n" "${DELETED_COUNTS[$i]}"
+        echo ""
+    done
+fi
+
 echo "Directories backed up:"
 ls -la "$BACKUP_DIR"
