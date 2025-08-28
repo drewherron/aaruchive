@@ -289,10 +289,7 @@ if [ ${#DIR_PATHS[@]} -gt 0 ]; then
     echo "Summary:"
     for ((i=0; i<${#DIR_PATHS[@]}; i++)); do
         echo "${DIR_PATHS[$i]}"
-        printf "  Added:\t%s\n" "${ADDED_COUNTS[$i]}"
-        printf "  Updated:\t%s\n" "${UPDATED_COUNTS[$i]}"
-        printf "  Deleted:\t%s\n" "${DELETED_COUNTS[$i]}"
-        echo ""
+        printf "  Added: %8s       Updated: %8s       Deleted: %8s\n" "${ADDED_COUNTS[$i]}" "${UPDATED_COUNTS[$i]}" "${DELETED_COUNTS[$i]}"
     done
 fi
 
