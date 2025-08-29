@@ -1,6 +1,6 @@
 # aaruchive
 
-A simple directory backup tool using rsync. It's basically just a wrapper for rsync that takes in lists of directories to include and exclude. I made this to simplify occasional backups to an external drive, or to consolidate backups into a single cron job.
+A simple backup tool using rsync. It's basically just a wrapper for rsync that takes in lists of directories and files to include and exclude. I made this to simplify occasional backups to an external drive, or to consolidate backups into a single cron job.
 
 ## Installation
 
@@ -45,23 +45,30 @@ chmod +x aaruchive.sh
 
 ```
 Options:
-  -i, --input FILE      Text file with list of directories to back up (one per line)
+  -i, --input FILE      Text file with list of directories and files to back up (one per line)
   -o, --output DIR      Directory where backups will be stored
   -e, --exclude FILE    Optional: Text file with exclusion patterns (one per line)
   -p, --path-exclude FILE  Optional: Text file with absolute paths to exclude
   -s, --strip-prefix DIR   Optional: Remove this prefix from source paths in output
+  -d, --delete             Optional: Delete files from destination that don't exist in source
   -h, --help            Display help message
 ```
 
-### Directory List Format
+### Input File Format
 
-Create a text file with one directory path per line:
+Create a text file with one directory or file path per line. You can mix both directories and individual files:
 
 ```
 /home/user/Documents
 /home/user/Pictures
+/home/user/.bashrc
+/home/user/important-file.txt
 /var/www
 ```
+
+- **Directories**: Will be backed up recursively with all contents
+- **Individual files**: Will be backed up to the appropriate location in the backup structure
+- **Trailing slashes**: Optional on directories, automatically handled
 
 ### Pattern Exclusion Format
 

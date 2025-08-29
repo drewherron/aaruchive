@@ -1,5 +1,6 @@
 #!/bin/zsh
 
+
 # Function to print usage and exit
 usage() {
     echo "Backup Script - Backs up directories using rsync"
@@ -144,52 +145,71 @@ if [ -n "$PATH_EXCLUDE_FILE" ] && [ -f "$PATH_EXCLUDE_FILE" ]; then
     echo "Loaded ${#PATH_EXCLUSIONS[@]} path exclusion entries"
 fi
 
-# Process each directory in the list
-while IFS= read -r DIR || [[ -n "$DIR" ]]; do
+# Process each file or directory in the list
+while IFS= read -r ITEM_PATH || [[ -n "$ITEM_PATH" ]]; do
     # Skip empty lines and comments
-    [[ -z "$DIR" || "$DIR" == \#* ]] && continue
+    [[ -z "$ITEM_PATH" || "$ITEM_PATH" == \#* ]] && continue
 
     # Strip trailing slash if exists
-    DIR=${DIR%/}
+    ITEM_PATH=${ITEM_PATH%/}
 
-    # Convert to absolute path if possible
-    if [ -d "$DIR" ]; then
-        DIR=$(cd "$DIR" 2>/dev/null && pwd || echo "$DIR")
-    fi
-
-    echo "Processing directory: $DIR"
-
-    # Check if the directory exists
-    if [ ! -d "$DIR" ]; then
-        echo "WARNING: Directory '$DIR' does not exist. Skipping."
+    # Determine if this is a file or directory and convert to absolute path
+    IS_FILE=false
+    if [ -f "$ITEM_PATH" ]; then
+        IS_FILE=true
+        # For files, get absolute path using dirname and basename
+        if [[ "$ITEM_PATH" == /* ]]; then
+            # Already absolute
+            ITEM_PATH=$(cd "$(dirname "$ITEM_PATH")" 2>/dev/null && echo "$(pwd)/$(basename "$ITEM_PATH")" || echo "$ITEM_PATH")
+        else
+            # Relative path
+            ITEM_PATH=$(cd "$(dirname "$ITEM_PATH")" 2>/dev/null && echo "$(pwd)/$(basename "$ITEM_PATH")" || echo "$ITEM_PATH")
+        fi
+        echo "Processing file: $ITEM_PATH"
+    elif [ -d "$ITEM_PATH" ]; then
+        IS_FILE=false
+        # For directories, use existing logic
+        ITEM_PATH=$(cd "$ITEM_PATH" 2>/dev/null && pwd || echo "$ITEM_PATH")
+        echo "Processing directory: $ITEM_PATH"
+    else
+        echo "WARNING: Path '$ITEM_PATH' does not exist. Skipping."
         continue
     fi
 
-    # Check if this directory IS the backup directory (direct match)
-    if [[ "$DIR" == "$BACKUP_DIR" || "$DIR" == "$OUTPUT_DIR" ]]; then
-        echo "WARNING: Directory '$DIR' is the backup destination."
+    # Check if this path IS the backup directory (direct match) - only relevant for directories
+    if [ "$IS_FILE" = false ] && [[ "$ITEM_PATH" == "$BACKUP_DIR" || "$ITEM_PATH" == "$OUTPUT_DIR" ]]; then
+        echo "WARNING: Directory '$ITEM_PATH' is the backup destination."
         echo "This would cause infinite recursion. Skipping this directory."
         continue
     fi
 
     # Create path structure for backup - preserve full paths
     # Apply prefix stripping if specified
-    if [ -n "$STRIP_PREFIX" ] && [[ "$DIR" == "$STRIP_PREFIX"* ]]; then
+    if [ -n "$STRIP_PREFIX" ] && [[ "$ITEM_PATH" == "$STRIP_PREFIX"* ]]; then
         # Remove the strip prefix from the beginning of the path
-        STRIPPED_DIR="${DIR#$STRIP_PREFIX}"
+        STRIPPED_PATH="${ITEM_PATH#$STRIP_PREFIX}"
         # Remove leading slash if present after stripping
-        STRIPPED_DIR="${STRIPPED_DIR#/}"
+        STRIPPED_PATH="${STRIPPED_PATH#/}"
         # If nothing left after stripping, use the basename
-        if [ -z "$STRIPPED_DIR" ]; then
-            STRIPPED_DIR="$(basename "$DIR")"
+        if [ -z "$STRIPPED_PATH" ]; then
+            STRIPPED_PATH="$(basename "$ITEM_PATH")"
         fi
-        REL_PATH="$STRIPPED_DIR"
+        REL_PATH="$STRIPPED_PATH"
         echo "Stripped prefix '$STRIP_PREFIX' from path"
     else
         # Remove leading slash to avoid absolute paths
-        REL_PATH="${DIR#/}"
+        REL_PATH="${ITEM_PATH#/}"
     fi
-    DEST_DIR="$BACKUP_DIR/$REL_PATH"
+    
+    if [ "$IS_FILE" = true ]; then
+        # For files, create destination directory structure and specify target filename
+        FILE_DIR="$(dirname "$REL_PATH")"
+        DEST_DIR="$BACKUP_DIR/$FILE_DIR"
+        FILE_NAME="$(basename "$ITEM_PATH")"
+    else
+        # For directories, use existing logic
+        DEST_DIR="$BACKUP_DIR/$REL_PATH"
+    fi
 
     echo "Destination: $DEST_DIR"
 
@@ -202,15 +222,15 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     # Build directory-specific rsync options
     DIR_RSYNC_OPTS="$RSYNC_OPTS"
 
-    # Create a temporary exclude file for path-specific exclusions
+    # Create a temporary exclude file for path-specific exclusions (only applies to directories)
     TEMP_EXCLUDE_FILE=""
-    if [ ${#PATH_EXCLUSIONS[@]} -gt 0 ]; then
+    if [ "$IS_FILE" = false ] && [ ${#PATH_EXCLUSIONS[@]} -gt 0 ]; then
         TEMP_EXCLUDE_FILE=$(mktemp)
         for EXCL in "${PATH_EXCLUSIONS[@]}"; do
             # Check if this exclusion applies to the current directory
-            if [[ "$EXCL" == "$DIR"/* ]]; then
+            if [[ "$EXCL" == "$ITEM_PATH"/* ]]; then
                 # Convert to a path relative to the source directory
-                REL_EXCL="${EXCL#$DIR/}"
+                REL_EXCL="${EXCL#$ITEM_PATH/}"
                 echo "  Path exclusion: $REL_EXCL"
                 echo "$REL_EXCL" >> "$TEMP_EXCLUDE_FILE"
             fi
@@ -221,17 +241,22 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
         fi
     fi
 
-    # If the backup directory is inside this directory, exclude it
-    if [[ "$BACKUP_DIR" == "$DIR"/* ]]; then
+    # If the backup directory is inside this directory, exclude it (only applies to directories)
+    if [ "$IS_FILE" = false ] && [[ "$BACKUP_DIR" == "$ITEM_PATH"/* ]]; then
         # Get the relative path from the source to the backup dir
-        REL_BACKUP="${BACKUP_DIR#$DIR/}"
+        REL_BACKUP="${BACKUP_DIR#$ITEM_PATH/}"
         echo "WARNING: The backup destination is inside this source directory."
         echo "  Auto-excluding: $REL_BACKUP"
         DIR_RSYNC_OPTS="$DIR_RSYNC_OPTS --exclude=$REL_BACKUP"
     fi
 
     # Run rsync
-    echo "Backing up $DIR/ to $DEST_DIR/"
+    if [ "$IS_FILE" = true ]; then
+        echo "Backing up file $ITEM_PATH to $DEST_DIR/$FILE_NAME"
+    else
+        echo "Backing up directory $ITEM_PATH/ to $DEST_DIR/"
+    fi
+    
     if [ -n "$EXCLUDE_FILE" ] && [ -f "$EXCLUDE_FILE" ]; then
         echo "Applying global exclusion patterns"
     fi
@@ -239,11 +264,21 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
     # Create temporary file to capture rsync output
     RSYNC_OUTPUT=$(mktemp)
     
-    eval rsync $DIR_RSYNC_OPTS "$DIR/" "$DEST_DIR/" | tee "$RSYNC_OUTPUT"
+    if [ "$IS_FILE" = true ]; then
+        # For files: rsync file dest-dir/
+        eval rsync $DIR_RSYNC_OPTS "$ITEM_PATH" "$DEST_DIR/" | tee "$RSYNC_OUTPUT"
+    else
+        # For directories: rsync source-dir/ dest-dir/
+        eval rsync $DIR_RSYNC_OPTS "$ITEM_PATH/" "$DEST_DIR/" | tee "$RSYNC_OUTPUT"
+    fi
 
     # Check if rsync was successful
     if [ $? -eq 0 ]; then
-        echo "Successfully backed up: $DIR/"
+        if [ "$IS_FILE" = true ]; then
+            echo "Successfully backed up file: $ITEM_PATH"
+        else
+            echo "Successfully backed up directory: $ITEM_PATH/"
+        fi
         
         # Parse rsync output to count operations
         ADDED=0
@@ -260,13 +295,17 @@ while IFS= read -r DIR || [[ -n "$DIR" ]]; do
             fi
         done < "$RSYNC_OUTPUT"
         
-        # Store statistics for this directory
-        DIR_PATHS+=("$DIR")
+        # Store statistics for this path
+        DIR_PATHS+=("$ITEM_PATH")
         ADDED_COUNTS+=("$ADDED")
         UPDATED_COUNTS+=("$UPDATED")
         DELETED_COUNTS+=("$DELETED")
     else
-        echo "Error backing up: $DIR/"
+        if [ "$IS_FILE" = true ]; then
+            echo "Error backing up file: $ITEM_PATH"
+        else
+            echo "Error backing up directory: $ITEM_PATH/"
+        fi
     fi
     
     # Clean up temporary rsync output file
